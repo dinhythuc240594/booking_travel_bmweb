@@ -242,15 +242,15 @@ class AdminController:
             flash('Bạn không có quyền chỉnh sửa tour này', 'error')
             return redirect(url_for('admin.tours_list'))
             
-        # Kiểm tra trạng thái bài viết theo quyền
-        if user.role == UserRole.STAFF:
-            if tour.status not in [TourStatus.DRAFT, TourStatus.REJECTED]:
-                flash('Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa', 'error')
-                return redirect(url_for('admin.editor_dashboard'))
-        elif user.role == UserRole.ADMIN:
-            if tour.status not in [TourStatus.PENDING, TourStatus.APPROVED, TourStatus.PUBLISHED]:
-                flash('Bài viết đang do nhân viên soạn thảo hoặc chỉnh sửa, admin không thể chỉnh sửa', 'error')
-                return redirect(url_for('admin.tours_list'))
+        # # Kiểm tra trạng thái bài viết theo quyền
+        # if user.role == UserRole.STAFF:
+        #     if tour.status not in [TourStatus.DRAFT, TourStatus.REJECTED]:
+        #         flash('Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa', 'error')
+        #         return redirect(url_for('admin.editor_dashboard'))
+        # elif user.role == UserRole.ADMIN:
+        #     if tour.status not in [TourStatus.PENDING, TourStatus.APPROVED, TourStatus.PUBLISHED]:
+        #         flash('Bài viết đang do nhân viên soạn thảo hoặc chỉnh sửa, admin không thể chỉnh sửa', 'error')
+        #         return redirect(url_for('admin.tours_list'))
         
         if request.method == 'POST':
 
@@ -747,37 +747,9 @@ class AdminController:
                 'message': 'Bài viết không tồn tại'
             }), 404
         
-        # Xác định author: nếu là bài từ API thì dùng author field, không thì dùng author.username hoặc author.full_name nếu có
-        author_name = tour.author if (hasattr(tour, 'is_api') and tour.is_api and hasattr(tour, 'author') and tour.author) else (tour.author.username if tour.author else 'N/A')
-        author_full_name = tour.author if (hasattr(tour, 'is_api') and tour.is_api and hasattr(tour, 'author') and tour.author) else (tour.author.full_name if tour.author and tour.author.full_name else tour.author.username if tour.author else 'N/A')
-        
         return jsonify({
             'success': True,
-            'data': {
-                'tour_id': tour.tour_id,
-                'title': tour.title,
-                'slug': tour.slug,
-                'summary': tour.summary or '',
-                'content': tour.content or '',
-                'thumbnail': tour.thumbnail or '',
-                'author': author_name,
-                'author_full_name': author_full_name,
-                'reviewer': tour.reviewer.username if tour.reviewer else None,
-                'reviewer_full_name': tour.reviewer.full_name if tour.reviewer and tour.reviewer.full_name else (tour.reviewer.username if tour.reviewer else None),
-                'is_api': tour.is_api if hasattr(tour, 'is_api') else False,
-                'status': tour.status.value,
-                'created_at': tour.created_at.strftime('%d/%m/%Y %H:%M') if tour.created_at else '',
-                'published_at': tour.published_at.strftime('%d/%m/%Y %H:%M') if tour.published_at else '',
-                'updated_at': tour.updated_at.strftime('%d/%m/%Y %H:%M') if tour.updated_at else '',
-                'view_count': tour.view_count,
-                'is_featured': tour.is_featured if hasattr(tour, 'is_featured') else False,
-                'is_hot': tour.is_hot if hasattr(tour, 'is_hot') else False,
-                'is_deleted': tour.is_deleted if hasattr(tour, 'is_deleted') else False,
-                'category_name': tour.category_name,
-                'location_id': tour.location_id,
-                'price_per_adult': tour.price_per_adult,
-                'price_per_child': tour.price_per_child,
-            }
+            'data': self.tour_model._tour_to_dict(tour)
         })
 
     def api_create_tour(self):
@@ -833,13 +805,13 @@ class AdminController:
         if user.role == UserRole.STAFF and tour.author_id != user_id:
             return jsonify({'success': False, 'error': 'Bạn không có quyền chỉnh sửa bài viết này'}), 403
 
-        # Kiểm tra trạng thái bài viết theo quyền
-        if user.role == UserRole.STAFF:
-            if tour.status not in [TourStatus.DRAFT, TourStatus.REJECTED]:
-                return jsonify({'success': False, 'error': 'Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa'}), 403
-        elif user.role == UserRole.ADMIN:
-            if tour.status not in [TourStatus.PENDING, TourStatus.APPROVED, TourStatus.PUBLISHED]:
-                return jsonify({'success': False, 'error': 'Bài viết đang do nhân viên soạn thảo hoặc chỉnh sửa, admin không thể chỉnh sửa'}), 403
+        # # Kiểm tra trạng thái bài viết theo quyền
+        # if user.role == UserRole.STAFF:
+        #     if tour.status not in [TourStatus.DRAFT, TourStatus.REJECTED]:
+        #         return jsonify({'success': False, 'error': 'Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa'}), 403
+        # elif user.role == UserRole.ADMIN:
+        #     if tour.status not in [TourStatus.PENDING, TourStatus.APPROVED, TourStatus.PUBLISHED]:
+        #         return jsonify({'success': False, 'error': 'Bài viết đang do nhân viên soạn thảo hoặc chỉnh sửa, admin không thể chỉnh sửa'}), 403
 
         data = dict(request.json if request.is_json else request.form)
 
@@ -879,12 +851,28 @@ class AdminController:
         user_id = session.get('user_id')
         if not user_id:
             return jsonify({'success': False, 'error': 'Chưa đăng nhập'}), 401
-            
-        data = request.form or request.json
-        reason = data.get('reason', '')
-        data = self.admin_model.reject_tour(tour_id, user_id, reason)
-        tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
-        data['data'] = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
+        
+        if request.method == 'GET':
+            tour_reject = self.tour_model.get_rejection_by_tour_id(tour_id)
+            if not tour_reject:
+                return jsonify({'success': False, 'error': 'Không tìm thấy bài viết'}), 404
+            return jsonify({
+                'success': True,
+                'data': {
+                    'title': tour_reject[0].tour.title,
+                    'rejection_reason': tour_reject[0].reason,
+                    'rejected_by': self.admin_model.get_by_id(tour_reject[0].rejected_by).username if self.admin_model.get_by_id(tour_reject[0].rejected_by) else 'Unknown',
+                    'status': tour_reject[0].tour.status.value,
+                    'rejected_at': tour_reject[0].created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                }
+            })
+
+        if request.method == 'POST':            
+            data = request.form or request.json
+            reason = data.get('reason', '')
+            data = self.admin_model.reject_tour(tour_id, user_id, reason)
+            tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
+            data['data'] = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': data.get('success'), 'message': data.get('message'), 'data': data.get('data')})
 
     def api_get_category(self):
@@ -969,7 +957,6 @@ class AdminController:
             return redirect(url_for('admin.login'))
         
         user = self.admin_model.get_by_id(session['user_id'])
-        print(user.avatar)
         if not user:
             flash('Không tìm thấy thông tin người dùng', 'error')
             session.clear()
@@ -1006,8 +993,6 @@ class AdminController:
                     
                     # Lưu đường dẫn avatar (relative to static folder)
                     avatar_url = f"static/uploads/avatars/{filename}"
-                    # user.avatar = avatar_url
-                    # self.db_session.commit()
                     self.admin_model.update(user.user_id, {'avatar': avatar_url})
                     
                     # Cập nhật session
@@ -1020,18 +1005,10 @@ class AdminController:
             elif action == 'update_info':
                 data = request.json if request.is_json else request.form
                 full_name = data.get('full_name', '').strip()
-                email = data.get('email', '').strip()
                 phone = data.get('phone', '').strip()
-                
-                if email and email != user.email:
-                    existing_user = self.admin_model.get_by_email(email)
-                    if existing_user and existing_user.user_id != user.user_id:
-                        flash('Email này đã được sử dụng', 'error')
-                        return redirect(url_for('admin.profile'))
                 
                 self.admin_model.update(user.user_id, {
                     'full_name': full_name if full_name else None,
-                    'email': email,
                     'phone_number': phone if phone else None
                 })
                 
@@ -1058,8 +1035,9 @@ class AdminController:
                     flash('Mật khẩu phải có ít nhất 6 ký tự', 'error')
                     return redirect(url_for('admin.profile'))
                 
-                user.password_hash = hash_password(new_password)
-                self.db_session.commit()
+                password_hash = hash_password(new_password)
+
+                self.admin_model.update(user.user_id, {'password_hash': password_hash})
                 
                 flash('Đổi mật khẩu thành công', 'success')
                 return redirect(url_for('admin.profile'))

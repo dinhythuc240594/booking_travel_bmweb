@@ -224,14 +224,14 @@ $(document).ready(function () {
     $('#articleGallery').change(async function () {
         const files = this.files;
         if (!files || files.length === 0) return;
-        
+
         let urls = [];
         try {
             urls = JSON.parse($('#articleGalleryUrls').val() || '[]');
-        } catch(e) {}
-        
+        } catch (e) { }
+
         showSpinner();
-        
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const url = await uploadArticleImage(file, 'tour', $('#editArticleId').val());
@@ -239,11 +239,11 @@ $(document).ready(function () {
                 urls.push(url);
             }
         }
-        
+
         hideSpinner();
         $('#articleGalleryUrls').val(JSON.stringify(urls));
         renderGalleryPreview('#galleryPreview', '#articleGalleryUrls', urls);
-        
+
         $(this).val('');
     });
 
@@ -251,14 +251,14 @@ $(document).ready(function () {
     $('#editArticleGallery').change(async function () {
         const files = this.files;
         if (!files || files.length === 0) return;
-        
+
         let urls = [];
         try {
             urls = JSON.parse($('#editArticleGalleryUrls').val() || '[]');
-        } catch(e) {}
-        
+        } catch (e) { }
+
         showSpinner();
-        
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const url = await uploadArticleImage(file, 'tour', $('#editArticleId').val());
@@ -266,19 +266,19 @@ $(document).ready(function () {
                 urls.push(url);
             }
         }
-        
+
         hideSpinner();
         $('#editArticleGalleryUrls').val(JSON.stringify(urls));
         renderGalleryPreview('#editGalleryPreview', '#editArticleGalleryUrls', urls);
-        
+
         $(this).val('');
     });
 
     // Xem lý do từ chối
     $(document).on('click', '.btn-view-rejection', function () {
 
-        fetch(`/admin/api/rejected-article/${$(this).data('id')}`).then(response => response.json()).then(data => {
-            console.log(data);
+        fetch(`/admin/api/tour/article/${$(this).data('id')}/reject`).then(response => response.json()).then(jsondata => {
+            const data = jsondata.data;
             const title = data.title;
             const reason = data.rejection_reason;
             const rejectedBy = data.rejected_by;
@@ -590,7 +590,7 @@ function updatePageTitle(section) {
         'drafts': 'Bản nháp',
         'pending': 'Chờ duyệt',
         'published': 'Đã xuất bản',
-        'tour-tree': 'Sơ đồ Phân cấp Tour',
+        'tour-tree': 'Thư mục bài viết',
     };
     $('#pageTitle').text(titles[section] || 'Dashboard');
 }
@@ -748,18 +748,7 @@ function displayArticles(articles, tableBodyId) {
     articles.forEach((article, index) => {
         const statusBadge = getStatusBadge(article.status);
         const checked = article.visible ? 'checked' : '';
-
-        const date = new Date(article.date + 'Z');
-
-        const dateVN = date.toLocaleString('sv-SE', {
-            timeZone: 'Asia/Ho_Chi_Minh', // Chuyển sang múi giờ VN
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false // Sử dụng định dạng 24h
-        });
+        const created_at = article.date;
 
         html += '';
         html += '<tr>';
@@ -777,18 +766,19 @@ function displayArticles(articles, tableBodyId) {
         html += '<span class="visibility-slider"></span>';
         html += '</label>';
         html += '</td>';
-        html += '<td>' + (dateVN) + '</td>';
+        html += '<td>' + (created_at) + '</td>';
         html += '<td>';
         // Chỉ hiển thị nút edit và delete cho bài viết draft
         // Bài viết pending chỉ có quyền xem
-        if (article.status === 'draft' || article.status === 'rejected') {
-            html += '<button class="btn btn-sm btn-info btn-action btn-edit" data-id="' + article.tour_id + '" title="Chỉnh sửa">';
-            html += '<i class="fas fa-edit"></i>';
-            html += '</button>';
-            html += '<button class="btn btn-sm btn-danger btn-action btn-delete" data-id="' + article.tour_id + '" title="Xóa">';
-            html += '<i class="fas fa-trash"></i>';
-            html += '</button>';
-        } else if (article.status === 'pending') {
+        // if (article.status === 'draft' || article.status === 'rejected') {
+        html += '<button class="btn btn-sm btn-info btn-action btn-edit" data-id="' + article.tour_id + '" title="Chỉnh sửa">';
+        html += '<i class="fas fa-edit"></i>';
+        html += '</button>';
+        // html += '<button class="btn btn-sm btn-danger btn-action btn-delete" data-id="' + article.tour_id + '" title="Xóa">';
+        // html += '<i class="fas fa-trash"></i>';
+        // html += '</button>';
+        // } 
+        if (article.status === 'pending') {
             // Bài viết pending chỉ có quyền xem, không có nút action
             html += '<button class="btn btn-sm btn-info btn-action btn-view" data-id="' + article.tour_id + '" title="Xem bài viết">';
             html += '<i class="fas fa-eye"></i>';
@@ -1305,9 +1295,9 @@ async function viewArticle(articleId) {
                         ${article.status === 'rejected' ? `<span class="status-badge status-rejected">Đã từ chối</span>` : ''}
                         <h1>${escapeHtml(article.title || 'Không có tiêu đề')}</h1>
                         <div class="meta">
-                            <i class="fas fa-calendar"></i> Ngày tạo: ${article.created_at ? new Date(article.created_at + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'N/A'} 
+                            <i class="fas fa-calendar"></i> Ngày tạo: ${article.created_at || 'N/A'} 
                             ${article.updated_at && article.updated_at !== article.created_at ?
-                    ' | <i class="fas fa-edit"></i> Cập nhật: ' + new Date(article.updated_at + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}
+                    ' | <i class="fas fa-edit"></i> Cập nhật: ' + article.updated_at || 'N/A' : ''}
                         </div>
                         ${article.thumbnail ? `<img src="${escapeHtml(article.thumbnail)}" alt="${escapeHtml(article.title)}" onerror="this.style.display='none'">` : ''}
                         ${article.summary ? `<div class="summary"><strong>Tóm tắt:</strong> ${escapeHtml(article.summary)}</div>` : ''}
@@ -1335,10 +1325,10 @@ async function editArticle(articleId) {
             const article = result.data;
 
             // Kiểm tra trạng thái bài viết
-            if (article.status !== 'draft' && article.status !== 'rejected') {
-                showToast('Không thể chỉnh sửa', 'Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa', 'warning');
-                return;
-            }
+            // // if (article.status !== 'draft' && article.status !== 'rejected') {
+            // showToast('Không thể chỉnh sửa', 'Bài viết đang trong trạng thái chờ duyệt hoặc đã xuất bản, bạn không thể chỉnh sửa', 'warning');
+            // return;
+            // // }
 
             // Load categories if not already loaded
             if ($('#editArticleCategory option').length <= 1) {
@@ -2008,7 +1998,6 @@ function renderTreeNode(node) {
                     <div class="d-flex align-items-center">
                         <i class="fas ${iconClass} folder-icon me-2 text-warning"></i>
                         <span class="fw-bold text-dark">${escapeHtml(node.group_name)}</span>
-                        <span class="badge ${folderTypeClass} rounded-pill ms-2 small" style="font-size: 10px;">${node.group_type}</span>
                     </div>
                     <span class="badge bg-secondary rounded-pill small">${node.tour_count} bài viết</span>
                 </div>
@@ -2040,12 +2029,12 @@ function renderGalleryPreview(containerId, hiddenInputId, urls) {
 }
 
 // Remove gallery image from the array and re-render
-window.removeGalleryImage = function(containerId, hiddenInputId, index) {
+window.removeGalleryImage = function (containerId, hiddenInputId, index) {
     const input = $(hiddenInputId);
     let urls = [];
     try {
         urls = JSON.parse(input.val() || '[]');
-    } catch(e) {}
+    } catch (e) { }
     urls.splice(index, 1);
     input.val(JSON.stringify(urls));
     renderGalleryPreview(containerId, hiddenInputId, urls);
