@@ -1,14 +1,14 @@
+
+import os
+
 from random import random
 from database import Location
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for, flash, session, current_app
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import or_, desc
-import re
-import os
+
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
-from utils import validate_email, validate_password, generate_slug, verify_password, hash_password, CATEGORY_NAME, CATEGORY_NAME_DICT
+from utils import validate_email, validate_password, generate_slug, verify_password, hash_password, CATEGORY_NAME, CATEGORY_NAME_DICT, _allowed_file
 from email_utils import send_email
 from template_html import EMAIL_BODY_HTML, EMAIL_SUBJECT_TEST, EMAIL_BODY_HTML_TEST, EMAIL_BODY_TEXT_TEST
 from database import (
@@ -411,7 +411,7 @@ class AdminController:
         
         return jsonify({
             'success': True,
-            'data': [self._tour_to_dict(tour) for tour in tour_list]
+            'data': [self.tour_model._tour_to_dict(tour) for tour in tour_list]
         })
 
     def api_my_tour(self):
@@ -462,7 +462,7 @@ class AdminController:
         return jsonify(
             {
                 "success": True,
-                "data": [self._tour_to_dict(tour) for tour in items],
+                "data": [self.tour_model._tour_to_dict(tour) for tour in items],
                 "pagination": {
                     "page": page,
                     "per_page": per_page,
@@ -547,24 +547,6 @@ class AdminController:
             "data": notifications,
             "count": len(notifications)
         })
-    
-    def _tour_to_dict(self, tour) -> dict:
-        """Chuyển đổi Tour object thành dictionary dùng chung cho admin & client"""
-        return {
-            'tour_id': tour.tour_id,
-            'title': tour.title,
-            'slug': tour.slug,
-            'status': tour.status.value if getattr(tour, "status", None) else None,
-            'summary': getattr(tour, "summary", None),
-            'thumbnail': getattr(tour, "thumbnail", None),
-            'visible': getattr(tour, "visible", True),
-            'author_id': tour.author_id if getattr(tour, "author_id", None) else None,
-            'reviewer_id': tour.reviewer_id if getattr(tour, "reviewer_id", None) else None,
-            'view_count': getattr(tour, "view_count", 0),
-            'created_at': tour.created_at.isoformat() if getattr(tour, "created_at", None) else None,
-            'published_at': tour.published_at.isoformat() if getattr(tour, "published_at", None) else None,
-            'category_name': CATEGORY_NAME_DICT.get(getattr(tour, "category_name", None), 'N/A')
-        }
     
     def api_statistics(self):
         """API lấy thống kê dashboard"""
@@ -824,10 +806,14 @@ class AdminController:
         data_dict['slug'] = generate_slug(data.get('title'), status.value) + str(random())[:8]
         data_dict['price_per_adult'] = float(data.get('price_per_adult', '0.0'))
         data_dict['price_per_child'] = float(data.get('price_per_child', '0.0'))
+        try:
+            data_dict['duration_days'] = int(data.get('duration_days', '1') or '1')
+        except (ValueError, TypeError):
+            data_dict['duration_days'] = 1
 
         result = self.admin_model.create_tour(data_dict)
         tour_obj = self.tour_model.get_by_id(result['tour_id'])
-        data = self._tour_to_dict(tour_obj) if tour_obj else None
+        data = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': result.get('success'), 'message': result.get('message'), 'data': data})
 
     def api_edit_tour(self, tour_id: int):
@@ -861,16 +847,22 @@ class AdminController:
             if field in data and isinstance(data[field], str):
                 data[field] = data[field].lower() in ('true', '1', 'yes', 'on')
 
+        if 'duration_days' in data:
+            try:
+                data['duration_days'] = int(data['duration_days'] or '1')
+            except (ValueError, TypeError):
+                data['duration_days'] = 1
+
         result = self.admin_model.edit_tour(tour_id, data)
         tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
-        data = self._tour_to_dict(tour_obj) if tour_obj else None
+        data = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': result.get('success'), 'message': result.get('message'), 'data': data})
 
     def api_delete_tour(self, tour_id: int):
         
         result = self.admin_model.delete_tour(tour_id)
         tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
-        data = self._tour_to_dict(tour_obj) if tour_obj else None
+        data = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': result.get('success'), 'message': result.get('message'), 'data': data})
 
     def api_approve_atour(self, tour_id: int):
@@ -880,7 +872,7 @@ class AdminController:
 
         data = self.admin_model.approve_tour(tour_id, user_id)
         tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
-        data['data'] = self._tour_to_dict(tour_obj) if tour_obj else None
+        data['data'] = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': data.get('success'), 'message': data.get('message'), 'data': data.get('data')})
 
     def api_reject_atour(self, tour_id: int):
@@ -892,7 +884,7 @@ class AdminController:
         reason = data.get('reason', '')
         data = self.admin_model.reject_tour(tour_id, user_id, reason)
         tour_obj = self.tour_model.get_by_id(tour_id, include_deleted=True)
-        data['data'] = self._tour_to_dict(tour_obj) if tour_obj else None
+        data['data'] = self.tour_model._tour_to_dict(tour_obj) if tour_obj else None
         return jsonify({'success': data.get('success'), 'message': data.get('message'), 'data': data.get('data')})
 
     def api_get_category(self):
@@ -935,7 +927,7 @@ class AdminController:
             return jsonify({'success': False, 'error': 'Không có file được chọn'}), 400
         
         # Kiểm tra file hợp lệ
-        if not self._allowed_file(file.filename):
+        if not _allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'File không hợp lệ. Chỉ chấp nhận: png, jpg, jpeg, gif, webp'}), 400
         
         # Lấy news_id từ request (nếu có) để lưu vào thư mục tương ứng
@@ -966,126 +958,6 @@ class AdminController:
             'image_url': image_url
         })
 
-    def _allowed_file(self, filename):
-        """Kiểm tra file có được phép upload không"""
-        return '.' in filename and \
-               filename.rsplit('.', 1)[1].lower() in current_app.config.get('ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg', 'gif', 'webp'})
-
-
-    def profile_user(self):
-        """
-        Trang thông tin cá nhân của user
-        Route: GET POST /profile
-        """
-        if 'user_id' not in session:
-            return jsonify({'status': False, 'message': 'Chưa đăng nhập'}), 401
-        
-        user = self.admin_model.get_by_id(session['user_id'])
-        if not user:
-            return jsonify({'status': False, 'message': 'Không tìm thấy thông tin người dùng'}), 404
-
-        if request.method == 'POST':
-            data = request.json if request.is_json else request.form
-            action = data.get('action')
-            if action == 'update_avatar':
-                if 'avatar' not in request.files:
-                    return jsonify({'status': False, 'message': 'Không có file được chọn'}), 400
-                
-                file = request.files['avatar']
-                if file.filename == '':
-                    return jsonify({'status': False, 'message': 'Không có file được chọn'}), 400
-                
-                if file and self._allowed_file(file.filename):
-                    filename = secure_filename(f"avatar_{user.user_id}_{file.filename}")
-                    # Tạo đường dẫn upload folder
-                    upload_folder = os.path.join('src', 'static', 'uploads', 'avatars')
-                    os.makedirs(upload_folder, exist_ok=True)
-                    filepath = os.path.join(upload_folder, filename)
-                    file.save(filepath)
-                    
-                    # Xóa avatar cũ nếu có
-                    if user.avatar:
-                        old_path = user.avatar.lstrip('/')
-                        old_path = os.path.join('src', old_path) if not old_path.startswith('src') else old_path
-                        if os.path.exists(old_path):
-                            try:
-                                os.remove(old_path)
-                            except:
-                                pass
-                    
-                    # Lưu đường dẫn avatar (relative to static folder)
-                    avatar_url = f"static/uploads/avatars/{filename}"
-                    user.avatar = avatar_url
-                    self.db_session.commit()
-                    
-                    # Cập nhật session
-                    session['avatar'] = avatar_url
-                    
-                    return jsonify({'status': True, 'message': 'Cập nhật avatar thành công', 'avatar_url': f'/{avatar_url}'})
-                else:
-                    return jsonify({'status': False, 'message': 'File không hợp lệ. Chỉ chấp nhận: png, jpg, jpeg, gif, webp'}), 400
-            
-            elif action == 'update_info':
-                data = request.json if request.is_json else request.form
-                full_name = data.get('full_name', '').strip()
-                email = data.get('email', '').strip()
-                phone_number = data.get('phone_number', '').strip()
-                gender = data.get('gender', '').strip()
-                date_of_birth = data.get('date_of_birth', '').strip()
-                address = data.get('address', '').strip()
-                
-                if email and email != user.email:
-                    existing_user = self.admin_model.get_by_email(email)
-                    if existing_user and existing_user.user_id != user.user_id:
-                        return jsonify({'status': False, 'message': 'Email này đã được sử dụng'}), 400
-
-                self.admin_model.update(user.user_id, {
-                    'full_name': full_name,
-                    'email': email,
-                    'phone_number': phone_number,
-                    'gender': gender,
-                    'date_of_birth': date_of_birth,
-                    'address': address
-                })
-                
-                user = self.admin_model.get_by_id(session['user_id'])
-                session['full_name'] = user.full_name or user.username
-                
-                return jsonify({
-                    'status': True, 
-                    'message': 'Cập nhật thông tin thành công', 
-                    'user': {
-                        'full_name': user.full_name, 
-                        'email': user.email, 
-                        'phone_number': user.phone_number, 
-                        'gender': user.gender, 
-                        'date_of_birth': user.date_of_birth, 
-                        'address': user.address
-                    }
-                })
-            
-            elif action == 'change_password':
-                data = request.json if request.is_json else request.form
-                current_password = data.get('current_password')
-                new_password = data.get('new_password')
-                confirm_password = data.get('confirm_password')
-                
-                if not verify_password(user.password_hash, current_password):
-                    return jsonify({'status': False, 'message': 'Mật khẩu hiện tại không đúng'})
-                
-                if new_password != confirm_password:
-                    return jsonify({'status': False, 'message': 'Mật khẩu mới và xác nhận không khớp'})
-                
-                if len(new_password) < 6:
-                    return jsonify({'status': False, 'message': 'Mật khẩu phải có ít nhất 6 ký tự'})
-                
-                user.password_hash = hash_password(new_password)
-                self.db_session.commit()
-                
-                return jsonify({'status': True, 'message': 'Đổi mật khẩu thành công'})
-            
-        return jsonify({'status': False, 'message': 'Hành động không hợp lệ'})
-
     #### profile admin or editor ####
     def profile(self):
         """
@@ -1114,7 +986,7 @@ class AdminController:
                 if file.filename == '':
                     return jsonify({'success': False, 'message': 'Không có file được chọn'}), 400
                 
-                if file and self._allowed_file(file.filename):
+                if file and _allowed_file(file.filename):
                     filename = secure_filename(f"avatar_{user.user_id}_{file.filename}")
                     # Tạo đường dẫn upload folder
                     upload_folder = os.path.join('src', 'static', 'uploads', 'avatars')

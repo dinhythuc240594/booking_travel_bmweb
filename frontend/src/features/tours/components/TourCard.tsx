@@ -36,7 +36,7 @@ export default function TourCard({ tour }: TourCardProps) {
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={tour.featuredImage}
+          src={tour.featuredImage.startsWith("http") ? tour.featuredImage : (process.env.NEXT_PUBLIC_BASE_URL || "") + tour.featuredImage}
           alt={tour.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
           loading="lazy"
@@ -95,10 +95,10 @@ export default function TourCard({ tour }: TourCardProps) {
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
             <span>{tour.duration}</span>
           </div>
-          <div className="flex items-center gap-1">
+          {/* <div className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5 text-zinc-400" />
             <span>Tối đa {tour.maxGroupSize} người</span>
-          </div>
+          </div> */}
         </div>
 
         {/* Giá & CTA Đặt Tour */}

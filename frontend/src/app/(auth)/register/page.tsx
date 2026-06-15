@@ -99,6 +99,7 @@ function RegisterContent() {
           password: password,
           confirm_password: confirmPassword,
         }),
+        credentials: "include",
       });
       const data = await response.json();
       return data;
@@ -106,7 +107,7 @@ function RegisterContent() {
 
     const data = await registerUser();
 
-    if (data?.message === "success") {
+    if (data?.status === true) {
       login(data.user, "mock-jwt-token-xyz");
       setSuccess(true);
       setLoading(false);
